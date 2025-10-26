@@ -76,6 +76,21 @@ return [
             'report' => false,
         ],
 
+        'r2' => [
+            'driver' => 's3',
+            'key'    => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => 'auto', // R2 pakai 'auto'
+            'bucket' => env('R2_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'), // https://<account>.r2.cloudflarestorage.com
+            'use_path_style_endpoint' => true, // WAJIB untuk R2
+            'throw' => false,
+
+            // penting buat generate URL:
+            'url' => env('R2_PUBLIC_URL'), // contoh: https://pub-xxxxxx.r2.dev
+            'visibility' => 'public',
+        ],
+
     ],
 
     /*

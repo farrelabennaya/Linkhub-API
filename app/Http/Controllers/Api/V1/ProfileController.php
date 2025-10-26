@@ -62,19 +62,18 @@ class ProfileController extends Controller
         ]);
     }
     public function deleteAvatar(Request $r)
-{
-    /** @var \App\Models\User $user */
-    $user = $r->user();
+    {
+        /** @var \App\Models\User $user */
+        $user = $r->user();
 
-    if ($user->profile && $user->profile->avatar_path) {
-        Storage::disk('r2')->delete($user->profile->avatar_path);
-        $user->profile->update([
-            'avatar_path' => null,
-            'avatar_url'  => null, // kalau masih ada field lama
-        ]);
+        if ($user->profile && $user->profile->avatar_path) {
+            Storage::disk('r2')->delete($user->profile->avatar_path);
+            $user->profile->update([
+                'avatar_path' => null,
+                'avatar_url'  => null, // kalau masih ada field lama
+            ]);
+        }
+
+        return response()->json(['message' => 'Avatar dihapus.']);
     }
-
-    return response()->json(['message' => 'Avatar dihapus.']);
-}
-
 }
