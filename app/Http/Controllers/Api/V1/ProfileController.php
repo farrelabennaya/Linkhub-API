@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use Illuminate\Support\Facades\Storage;
-use App\Http\Controllers\Controller;
-use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
 {
@@ -33,45 +34,50 @@ class ProfileController extends Controller
             'avatar' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
-        /** @var \App\Models\User $user */
         $user = $r->user();
         $file = $r->file('avatar');
 
-        // simpan ke R2 (public)
-        // pakai nama unik juga bisa: $path = 'avatars/'.Str::uuid().'.'.$file->extension();
-        // Storage::disk('r2')->putFileAs('avatars', $file, basename($path), ['visibility' => 'public']);
-        $path = $file->storePublicly('avatars', 'r2'); // -> 'avatars/xxx.jpg'
+        // nama unik
+        $key = 'avatars/' . Str::uuid() . '.' . $file->extension();
 
-        // hapus avatar lama kalau ada dan itu path (bukan url eksternal)
-        if ($user->profile && $user->profile->avatar_path) {
-            Storage::disk('r2')->delete($user->profile->avatar_path);
+        // upload ke R2 (disk 'r2')
+        // catatan: untuk R2, gunakan put() + file_get_contents agar aman di banyak env
+        Storage::disk('r2')->put($key, file_get_contents($file->getRealPath()), 'public');
+
+        // hapus file lama kalau URL lama adalah URL R2
+        if ($user->profile?->avatar_url) {
+            $oldUrl = $user->profile->avatar_url;
+            $prefix = rtrim(config('filesystems.disks.r2.url'), '/') . '/'; // R2_PUBLIC_URL/
+            if (str_starts_with($oldUrl, $prefix)) {
+                $oldKey = ltrim(Str::after($oldUrl, $prefix), '/');
+                Storage::disk('r2')->delete($oldKey);
+            }
         }
 
-        // simpan PATH ke DB
+        // generate URL publik (langsung simpan ke avatar_url)
+        $publicUrl = Storage::disk('r2')->url($key);
+
         $user->profile->update([
-            'avatar_path' => $path, // <-- simpan path
+            'avatar_url' => $publicUrl,  // <-- hanya kolom ini yang dipakai
         ]);
 
-        // generate URL publik buat FE
-        $publicUrl = Storage::disk('r2')->url($path);
-
         return response()->json([
-            'avatar_url' => $publicUrl, // FE pakai ini
-            'avatar_path' => $path,     // kalau FE mau simpan path juga
-            'message' => 'Avatar diperbarui.',
+            'avatar_url' => $publicUrl,
+            'message'    => 'Avatar diperbarui.',
         ]);
     }
     public function deleteAvatar(Request $r)
     {
-        /** @var \App\Models\User $user */
         $user = $r->user();
+        $url  = $user->profile?->avatar_url;
 
-        if ($user->profile && $user->profile->avatar_path) {
-            Storage::disk('r2')->delete($user->profile->avatar_path);
-            $user->profile->update([
-                'avatar_path' => null,
-                'avatar_url'  => null, // kalau masih ada field lama
-            ]);
+        if ($url) {
+            $prefix = rtrim(config('filesystems.disks.r2.url'), '/') . '/';
+            if (str_starts_with($url, $prefix)) {
+                $key = ltrim(Str::after($url, $prefix), '/');
+                Storage::disk('r2')->delete($key);
+            }
+            $user->profile->update(['avatar_url' => null]);
         }
 
         return response()->json(['message' => 'Avatar dihapus.']);
