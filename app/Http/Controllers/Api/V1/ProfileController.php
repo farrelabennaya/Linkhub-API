@@ -30,66 +30,51 @@ class ProfileController extends Controller
     public function uploadAvatar(Request $r)
     {
         $r->validate([
-            'avatar' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048', // 2MB
-        ], [
-            'avatar.required' => 'File avatar wajib diisi.',
-            'avatar.image'    => 'File harus berupa gambar.',
-            'avatar.mimes'    => 'Format gambar harus jpeg, png, jpg, atau webp.',
-            'avatar.max'      => 'Ukuran maksimal 2MB.',
+            'avatar' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
         /** @var \App\Models\User $user */
         $user = $r->user();
         $file = $r->file('avatar');
-        /** @var UploadedFile $file */
 
-        // simpan ke storage/app/public/avatars
-        $path = $file->store('avatars', 'public');
+        // simpan ke R2 (public)
+        // pakai nama unik juga bisa: $path = 'avatars/'.Str::uuid().'.'.$file->extension();
+        // Storage::disk('r2')->putFileAs('avatars', $file, basename($path), ['visibility' => 'public']);
+        $path = $file->storePublicly('avatars', 'r2'); // -> 'avatars/xxx.jpg'
 
-        // kalau mau hapus avatar lama (opsional)
-        if ($user->profile && $user->profile->avatar_url) {
-            // jika avatar_url berupa storage path (bukan URL eksternal)
-            $old = str_replace('/storage/', '', $user->profile->avatar_url);
-            if (Storage::disk('public')->exists($old)) {
-                Storage::disk('public')->delete($old);
-            }
+        // hapus avatar lama kalau ada dan itu path (bukan url eksternal)
+        if ($user->profile && $user->profile->avatar_path) {
+            Storage::disk('r2')->delete($user->profile->avatar_path);
         }
 
-        // generate URL publik
-        $url = Storage::disk('public')->url($path);
-
-        // simpan ke profile
+        // simpan PATH ke DB
         $user->profile->update([
-            'avatar_url' => $url,
+            'avatar_path' => $path, // <-- simpan path
         ]);
 
+        // generate URL publik buat FE
+        $publicUrl = Storage::disk('r2')->url($path);
+
         return response()->json([
-            'avatar_url' => $url,
+            'avatar_url' => $publicUrl, // FE pakai ini
+            'avatar_path' => $path,     // kalau FE mau simpan path juga
             'message' => 'Avatar diperbarui.',
         ]);
     }
     public function deleteAvatar(Request $r)
-    {
-        $user = $r->user();
+{
+    /** @var \App\Models\User $user */
+    $user = $r->user();
 
-        if (!$user->profile) {
-            return response()->json(['message' => 'Profile tidak ditemukan'], 404);
-        }
-
-        $url = $user->profile->avatar_url;
-
-        // Kalau avatar disimpan di storage public (bukan URL eksternal)
-        if ($url) {
-            // Ubah /storage/avatars/xxx.jpg -> avatars/xxx.jpg
-            $relative = str_replace('/storage/', '', parse_url($url, PHP_URL_PATH) ?? '');
-
-            if ($relative && Storage::disk('public')->exists($relative)) {
-                Storage::disk('public')->delete($relative);
-            }
-        }
-
-        $user->profile->update(['avatar_url' => null]);
-
-        return response()->json(['ok' => true, 'avatar_url' => null, 'message' => 'Avatar dihapus.']);
+    if ($user->profile && $user->profile->avatar_path) {
+        Storage::disk('r2')->delete($user->profile->avatar_path);
+        $user->profile->update([
+            'avatar_path' => null,
+            'avatar_url'  => null, // kalau masih ada field lama
+        ]);
     }
+
+    return response()->json(['message' => 'Avatar dihapus.']);
+}
+
 }
