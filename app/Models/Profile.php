@@ -11,4 +11,14 @@ class Profile extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function setDisplayNameAttribute($value)
+    {
+        $this->attributes['display_name'] = $value;
+
+        // kalau sudah ada user, sync name
+        if ($this->relationLoaded('user') ? $this->user : $this->user()->exists()) {
+            optional($this->user)->forceFill(['name' => $value])->saveQuietly();
+        }
+    }
 }
